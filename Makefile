@@ -2,7 +2,7 @@
 # TODO: Fill your group number, your NOMAs and your names
 # group number X
 # NOMA1 : NAME1
-# NOMA2 : NAME2 
+# 52461900 : ROUSSEAU FLORENT 
 # ----------------------------
 
 UNAME_S := $(shell uname -s)
