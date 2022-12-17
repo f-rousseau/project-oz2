@@ -10,7 +10,6 @@ define
 	MapWidth = {List.length Input.map}
     MapHeight = {List.length Input.map.1}
 	PlayersPosition
-	IsDead = 0
 	FoodPosition
 
 	% Functions
@@ -92,6 +91,7 @@ in
 			[] dropFlag(?ID ?Flag) then {DropFlag State ID Flag}
 			[] sayFlagTaken(ID Flag) then {SayFlagTaken State ID Flag}
 			[] sayFlagDropped(ID Flag) then {SayFlagDropped State ID flag}
+			[] respawn() then {Respawn State}
         end
     end
 
@@ -110,24 +110,22 @@ in
 		ID = State.id
 		Random = {RandomInRange 1 5}
 	in
-		if IsDead == 0 then
-			case Random
-				of 1 then
-					% Move down
-					Position = pt(x:State.position.x+1 y:State.position.y)
-				[] 2 then
-					% Move up
-					Position = pt(x:State.position.x-1 y:State.position.y)
-				[] 3 then
-					% Move right
-					Position = pt(x:State.position.x y:State.position.y+1)
-				[] 4 then
-					% Move left
-					Position = pt(x:State.position.x y:State.position.y-1)
-				else
-					% Do not move
-					Position = pt(x:State.position.x y:State.position.y)
-			end
+		case Random
+			of 1 then
+				% Move down
+				Position = pt(x:State.position.x+1 y:State.position.y)
+			[] 2 then
+				% Move up
+				Position = pt(x:State.position.x-1 y:State.position.y)
+			[] 3 then
+				% Move right
+				Position = pt(x:State.position.x y:State.position.y+1)
+			[] 4 then
+				% Move left
+				Position = pt(x:State.position.x y:State.position.y-1)
+			else
+				% Do not move
+				Position = pt(x:State.position.x y:State.position.y)
 		end
 		State
 	end
@@ -153,7 +151,6 @@ in
 	fun {Respawn State}
 		% The player can respawn and keep playing
 		{System.show respawn}
-		IsDead := 0
 		state(
 			id:State.id
 			position: State.position
@@ -202,11 +199,14 @@ in
 
 	fun {FireItem State ?ID ?Kind}
 		% Allow the player to choose a weapon to fire
+		% Fire randowmlu, does not check for charges
 		ID = State.id
-		Kind = null
 		Random = {RandomInRange 0 1}
 	in
-		{System.show fireItem}
+		case Random
+			of 0 then Kind = gun
+			else Kind = mine
+		end
 		State
 	end
 
@@ -224,10 +224,6 @@ in
 
 	fun {SayDeath State ID}
 		% Inform that player ID is dead
-		if ID == State.id then
-			{System.show isDead}
-			IsDead := 1
-		end
 		State
 	end
 
