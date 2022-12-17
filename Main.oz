@@ -12,11 +12,13 @@ define
 	SimulatedThinking
 	Main
 	WindowPort
+	RespawnTime
 
 	CheckValidMove
 	MovePlayer
 	HandleMineExplosion
 	SendToAllPlayers
+	ChargeWeapon
 
 	proc {DrawFlags Flags Port}
 		case Flags of nil then skip 
@@ -116,6 +118,8 @@ in
 				hp: MainState.hp 
 				map: MainState.map
 				playersPos: NewPlayerPos
+				mineReloads: MainState.mineReloads
+				gunReloads: MainState.gunReloads
 				)
 		end
 		% PlayerState
@@ -133,41 +137,101 @@ in
 		% PlayerState
 		{SendToAllPlayers sayMineExplode(mine(pos: State.currentPos)) PlayersPorts}
 		{SendToAllPlayers sayDamageTaken(ID 2 State.hp-2) PlayersPorts}
-		
+
 		{Send WindowPort lifeUpdate(ID State.hp-2)}
 	end
 
+	proc {ChargeWeapon ID MainState NewState Weapon}
+		case Weapon
+		of gun then
+			NewState = state(
+				mines: MainState.mines 
+				flags: MainState.flags 
+				currentPos: MainState.currentPos
+				hp: MainState.hp 
+				map: MainState.map
+				playersPos: MainState.playersPos
+				mineReloads: MainState.mineReloads
+				gunReloads: MainState.gunReloads + 1
+				)
+		[] mine then
+			NewState = state(
+				mines: MainState.mines 
+				flags: MainState.flags 
+				currentPos: MainState.currentPos
+				hp: MainState.hp 
+				map: MainState.map
+				playersPos: MainState.playersPos
+				mineReloads: MainState.mineReloads + 1
+				gunReloads: MainState.gunReloads
+				)
+		end
+	end
+
 	SimulatedThinking = proc{$} {Delay ({OS.rand} mod (Input.thinkMax - Input.thinkMin) + Input.thinkMin)} end
+	RespawnTime = proc{$} {Delay Input.respawnDelay} end
 
 	proc {Main Port ID State}
-		local NewState in
+		local
+			MovedState
+			GunState
+			NewState
+			IsDead = 0
+		in
 			{System.show startOfLoop(ID)}
 
-			% check if dead 
-			if State.hp < 0 then
-				{System.show mustRespawn}
-				% respawn
+			if State.hp =< 0 then
+				IsDead := 1
+				% Player is dead, wait for respawn and skip the rest of the turn
+				% PlayerState
+				{SendToAllPlayers sayDeath(ID) PlayersPorts}
+				{RespawnTime}
+				% Respawn
+				{Send Port respawn()}
 			end
 
-			% check if player moved on a mine
-			if {List.member mine(pos:State.currentPos) State.mines} then
-				{HandleMineExplosion ID State NewState}
-				%Handle NewState conflicts
-			end
-
-			% ask where the player wants to move and mvoe it if possible
+			% ask where the player wants to move and move it if possible
 			local NewID AskPos R in
 				{Send Port move(NewID AskPos)}
 				if {CheckValidMove ID State.currentPos AskPos.x AskPos.y State.map State.playersPos} then
-					{MovePlayer ID Port State NewState AskPos.x AskPos.y}
+					{MovePlayer ID Port State MovedState AskPos.x AskPos.y}
 				else
-					NewState = State
+					MovedState = State
 				end
 			end
 
+			% check if player moved on a mine
+			if {List.member mine(pos:MovedState.currentPos) State.mines} then
+				%{HandleMineExplosion ID State NewState}
+				{HandleMineExplosion ID State}
+				%Handle NewState conflicts
+				if State.hp =< 0 then
+					IsDead := 1
+				end
+			end
 
+			if IsDead == 0 then
+				% ask the player what weapon it wants to charge
+				local NewId Kind in
+					{Send Port chargeItem(NewId Kind)} % Ask which weapon to charge
+					{ChargeWeapon ID MovedState GunState Kind}
+					NewState = GunState % TODO : must be NewState = <state> at the last portion of this function
+				end
 
-			{Delay 250}
+				% ask the player what weapon it wants to use (if possible)
+
+				% ask the player if he wants to grab the flag (if possible)
+
+				% ask the player if he wants to drop the flag (if possible)
+
+			%else
+				% if player died, notify everyone and drop flag
+			end
+
+			% spawn food if possible
+
+			%{Delay 250}
+			{SimulatedThinking}
 			{System.show endOfLoop(ID)}
 			{Main Port ID NewState}
 		end
@@ -195,11 +259,13 @@ in
 					mines: [mine(pos: pt(x:4 y:3)) mine(pos: pt(x:4 y:1)) mine(pos: pt(x:4 y:1))]
 
 
-					flags:Input.flags 
+					flags: Input.flags 
 					currentPos: Position 
-					hp:Input.startHealth 
-					map:Input.map
-					playersPos:Input.spawnPoints
+					hp: Input.startHealth 
+					map: Input.map
+					playersPos: Input.spawnPoints
+					mineReloads: 0
+					gunReloads: 0
 					)}
 			end
 			{InitThreadForAll Next}

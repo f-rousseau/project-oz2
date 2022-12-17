@@ -9,6 +9,9 @@ define
 	% Vars
 	MapWidth = {List.length Input.map}
     MapHeight = {List.length Input.map.1}
+	PlayersPosition
+	IsDead = 0
+	FoodPosition
 
 	% Functions
 	StartPlayer
@@ -19,7 +22,7 @@ define
 	InitPosition
 	NewTurn
 	Move
-	IsDead
+	Respawn
 	AskHealth
 	SayMoved
 	SayMineExplode
@@ -49,14 +52,14 @@ in
 			{TreatStream
 			 	Stream
 				 state(
-					id:id(name:random color:Color id:ID)
-					position:{List.nth Input.spawnPoints ID}
-					map:Input.map
-					hp:Input.startHealth
-					flag:null
-					mineReloads:0
-					gunReloads:0
-					startPosition:{List.nth Input.spawnPoints ID}
+					id: id(name:random color:Color id:ID)
+					position: {List.nth Input.spawnPoints ID}
+					map: Input.map
+					hp: Input.startHealth
+					flag: null
+					mineReloads: 0
+					gunReloads: 0
+					startPosition: {List.nth Input.spawnPoints ID}
 					% TODO You can add more elements if you need it
 				)
 			}
@@ -95,31 +98,42 @@ in
 	%%%% TODO Message functions
 
 	fun {InitPosition State ?ID ?Position}
+		% Sets the player spawn position
+		{System.show initPosition}
 		ID = State.id
 		Position = State.startPosition
 		State
 	end
 
 	fun {Move State ?ID ?Position}
+		% Decide if the player want to move
 		ID = State.id
-		local Random in
-			Random = {RandomInRange 1 5}
-			if Random == 1 then
-				Position = pt(x:State.position.x+1 y:State.position.y)
-			elseif Random == 2 then
-				Position = pt(x:State.position.x-1 y:State.position.y)
-			elseif Random == 3 then
-				Position = pt(x:State.position.x y:State.position.y+1)
-			elseif Random == 4 then
-				Position = pt(x:State.position.x y:State.position.y-1)
-			else
-				Position = pt(x:State.position.x y:State.position.y)
+		Random = {RandomInRange 1 5}
+	in
+		if IsDead == 0 then
+			case Random
+				of 1 then
+					% Move down
+					Position = pt(x:State.position.x+1 y:State.position.y)
+				[] 2 then
+					% Move up
+					Position = pt(x:State.position.x-1 y:State.position.y)
+				[] 3 then
+					% Move right
+					Position = pt(x:State.position.x y:State.position.y+1)
+				[] 4 then
+					% Move left
+					Position = pt(x:State.position.x y:State.position.y-1)
+				else
+					% Do not move
+					Position = pt(x:State.position.x y:State.position.y)
 			end
 		end
 		State
 	end
 
 	fun {SayMoved State ID Position}
+		% Inform the new position of player ID
 		if ID == State.id then
 			state(
 				id:State.id
@@ -127,8 +141,8 @@ in
 				map: State.map
 				hp: State.hp
 				flag: State.flag
-				mineReloads:State.mineReloads
-				gunReloads:State.gunReloads
+				mineReloads: State.mineReloads
+				gunReloads: State.gunReloads
 				startPosition: State.startPosition
 			)
 		else
@@ -136,81 +150,163 @@ in
 		end
 	end
 
+	fun {Respawn State}
+		% The player can respawn and keep playing
+		{System.show respawn}
+		IsDead := 0
+		state(
+			id:State.id
+			position: State.position
+			map: State.map
+			hp: Input.startHealth
+			flag: State.flag
+			mineReloads: State.mineReloads
+			gunReloads: State.gunReloads
+			startPosition: State.startPosition
+		)
+	end
+
 	fun {SayMineExplode State Mine}
+		% Mine exploded somewhere
 		State
 	end
 
 	fun {SayFoodAppeared State Food}
+		% Food appeared somewhere
+		FoodPosition = Food.pos
 		State
 	end
 
 	fun {SayFoodEaten State ID Food}
+		% Player ID ate food
 		State
 	end
 
 	fun {ChargeItem State ?ID ?Kind} 
+		% Allow the player to choose a weapon to charge
 		ID = State.id
-		Kind = null
+		Random = {RandomInRange 0 1}
+	in
+		case Random
+			of 0 then Kind = gun
+			else Kind = mine
+		end
 		State
 	end
 
 	fun {SayCharge State ID Kind}
+		% Inform that weapon Kind is charged
+		{System.show sayCharge}
 		State
 	end
 
 	fun {FireItem State ?ID ?Kind}
+		% Allow the player to choose a weapon to fire
 		ID = State.id
 		Kind = null
+		Random = {RandomInRange 0 1}
+	in
+		{System.show fireItem}
 		State
 	end
 
 	fun {SayMinePlaced State ID Mine}
+		% A mine as been placed by player ID
+		{System.show sayMinePlaced}
 		State
 	end
 
 	fun {SayShoot State ID Position}
+		% Inform that a gun has been fired toward Position by player ID
+		{System.show sayShoot}
 		State
 	end
 
 	fun {SayDeath State ID}
+		% Inform that player ID is dead
+		if ID == State.id then
+			{System.show isDead}
+			IsDead := 1
+		end
 		State
 	end
 
 	fun {SayDamageTaken State ID Damage LifeLeft}
+		% Inform that player ID has taken damage and as LifeLeft hp
 		if ID == State.id then
 			{System.show damageTaken}
 			state(
-					id:State.id
-					position:State.position
-					map:State.map
-					hp:LifeLeft
-					flag:State.flag
-					mineReloads:State.mineReloads
-					gunReloads:State.gunReloads
-					startPosition:{List.nth Input.spawnPoints ID.id}
-				)
+				id: State.id
+				position: State.position
+				map: State.map
+				hp: LifeLeft
+				flag: State.flag
+				mineReloads: State.mineReloads
+				gunReloads: State.gunReloads
+				startPosition: {List.nth Input.spawnPoints ID.id}
+			)
 		else
 			State
 		end
     end
 
 	fun {TakeFlag State ?ID ?Flag}
+		% Decide if take flag
 		ID = State.id
-		Flag = null
-		State
+		Flag = State.flag
+		Random = {RandomInRange 0 1}
+	in
+		{System.show takeFlag}
+		if Random == 1 then
+			% take the flag
+			state(
+				id: State.id
+				position: State.position
+				map: State.map
+				hp: State.hp
+				flag: Flag
+				mineReloads: State.mineReloads
+				gunReloads: State.gunReloads
+				startPosition: State.startPosition
+			)
+		else
+			State
+		end
 	end
 			
 	fun {DropFlag State ?ID ?Flag}
+		% Decide if drop flag
 		ID = State.id
-		Flag = null
-		State
+		Flag = State.flag
+		Random = {RandomInRange 0 1}
+	in
+		{System.show dropFlag}
+		if Random == 1 then
+			% drop the flag
+			state(
+				id: State.id
+				position: State.position
+				map: State.map
+				hp: State.hp
+				flag: Flag
+				mineReloads: State.mineReloads
+				gunReloads: State.gunReloads
+				startPosition: State.startPosition
+			)
+		else
+			State
+		end
 	end
 
 	fun {SayFlagTaken State ID Flag}
+		% The player ID has picked up the flag
+		{System.show sayFlagTaken}
 		State
 	end
 
 	fun {SayFlagDropped State ID Flag}
+		% The player ID has dropped the flag
+		{System.show sayFlagDropped}
 		State
 	end
 end
