@@ -397,10 +397,10 @@ in
 				local NewID Kind in
 					{Send Port chargeItem(NewID Kind)} % Ask which weapon to charge
 					{ChargeWeapon ID MineState ChargeState Kind} % Charge the corresponding weapon
-					if (State.gunReloads >= Input.gunCharge) then
+					if (ChargeState.gunReloads >= Input.gunCharge) then
 						{Send Port sayCharge(NewID mine)} % Inform that gun is charged
 					end
-					if (State.mineReloads >= Input.mineCharge) then
+					if (ChargeState.mineReloads >= Input.mineCharge) then
 						{Send Port sayCharge(NewID gun)} % Inform that mine is charged
 					end
 				end
