@@ -149,7 +149,6 @@ in
 	proc {HandleMineExplosion ID State NewState}
 		% must notify the 3 components : MainState, GUIState and PlayerState
 		% MainState
-		{System.show mainStateUpdate}
 		NewState = state(
 			mines: State.mines 
 			flags: State.flags 
@@ -170,223 +169,99 @@ in
 		{Send WindowPort lifeUpdate(ID State.hp-2)}
 	end
 
-	proc {ChargeWeapon ID MainState NewState Weapon}
+	proc {ChargeWeapon ID State NewState Weapon}
 		case Weapon
 		of gun then
 			NewState = state(
-				mines: MainState.mines 
-				flags: MainState.flags 
-				currentPos: MainState.currentPos
-				hp: MainState.hp 
-				map: MainState.map
-				playersPos: MainState.playersPos
-				mineReloads: MainState.mineReloads
-				gunReloads: MainState.gunReloads + 1
-				orientation: MainState.orientation
+				mines: State.mines 
+				flags: State.flags 
+				currentPos: State.currentPos
+				hp: State.hp 
+				map: State.map
+				playersPos: State.playersPos
+				mineReloads: State.mineReloads
+				gunReloads: State.gunReloads + 1
+				orientation: State.orientation
 				)
 		[] mine then
 			NewState = state(
-				mines: MainState.mines 
-				flags: MainState.flags 
-				currentPos: MainState.currentPos
-				hp: MainState.hp 
-				map: MainState.map
-				playersPos: MainState.playersPos
-				mineReloads: MainState.mineReloads + 1
-				gunReloads: MainState.gunReloads
-				orientation: MainState.orientation
+				mines: State.mines 
+				flags: State.flags 
+				currentPos: State.currentPos
+				hp: State.hp 
+				map: State.map
+				playersPos: State.playersPos
+				mineReloads: State.mineReloads + 1
+				gunReloads: State.gunReloads
+				orientation: State.orientation
 				)
 		end
 	end
 
-	proc {FireWeapon ID MainState NewState Kind}
-		% If has enough charges, fire the corresponding weapon	
-		case Kind
-		of gun then
+	proc {FireWeapon ID State NewState Weapon}
+		% If has enough charges, fire the corresponding weapon
+		case Weapon
+		of null then NewState = State
+		[] gun(pos:Position) then
 			% Fire gun
-			if MainState.gunReloads >= Input.gunCharge then
-				% Shoot check if there is a target (player on mine) on the trajectory of the bullet
-				local TouchedPlayer Case1 Case2 CurrentState MineExploded in
-					% 0 = up, 1 = right, 2 = down, 3 = left
-					case MainState.orientation
-					of 0 then % up
-						Case1 = pt(MainState.currentPos.x - 1 MainState.currentPos.y) % one case up
-						if {List.member Case1 MainState.playersPos} then
-							% Player at position
-							TouchedPlayer = {List.subtract MainState.playersPos Case1}
-							{System.show TouchedPlayer}
-							MineExploded = 0
-						elseif {List.member mine(pos:Case1) MainState.mines} then
-							% Mine at position, trigger it
-							{HandleMineExplosion ID MainState CurrentState}
-							MineExploded = 1
-						else
-							Case2 = pt(MainState.currentPos.x - 2 MainState.currentPos.y) % two cases up
-							if {List.member Case2 MainState.playersPos} then
-								% Player at position
-								TouchedPlayer = {List.subtract MainState.playersPos Case2}
-								{System.show TouchedPlayer}
-								MineExploded = 0
-							elseif {List.member mine(pos:Case2) MainState.mines} then
-								% Mine at position, trigger it
-								{HandleMineExplosion ID MainState CurrentState}
-								MineExploded = 1
-							end
-						end
-					[] 1 then % right
-						Case1 = pt(MainState.currentPos.x MainState.currentPos.y + 1) % one case right
-						if {List.member Case1 MainState.playersPos} then
-							% Player at position
-							TouchedPlayer = {List.subtract MainState.playersPos Case1}
-							{System.show TouchedPlayer}
-							MineExploded = 0
-						elseif {List.member mine(pos:Case1) MainState.mines} then
-							% Mine at position, trigger it
-							{HandleMineExplosion ID MainState CurrentState}
-							MineExploded = 1
-						else
-							Case2 = pt(MainState.currentPos.x - 2 MainState.currentPos.y) % two cases right
-							if {List.member Case2 MainState.playersPos} then
-								% Player at position
-								TouchedPlayer = {List.subtract MainState.playersPos Case2}
-								{System.show TouchedPlayer}
-								MineExploded = 0
-							elseif {List.member mine(pos:Case2) MainState.mines} then
-								% Mine at position, trigger it
-								{HandleMineExplosion ID MainState CurrentState}
-								MineExploded = 1
-							end
-						end
-					[] 2 then % down
-						Case1 = pt(MainState.currentPos.x + 1 MainState.currentPos.y) % one case down
-						if {List.member Case1 MainState.playersPos} then
-							% Player at position
-							TouchedPlayer = {List.subtract MainState.playersPos Case1}
-							{System.show TouchedPlayer}
-							MineExploded = 0
-						elseif {List.member mine(pos:Case1) MainState.mines} then
-							% Mine at position, trigger it
-							{HandleMineExplosion ID MainState CurrentState}
-							MineExploded = 1
-						else
-							Case2 = pt(MainState.currentPos.x - 2 MainState.currentPos.y) % two cases down
-							if {List.member Case2 MainState.playersPos} then
-								% Player at position
-								TouchedPlayer = {List.subtract MainState.playersPos Case2}
-								{System.show TouchedPlayer}
-								MineExploded = 0
-							elseif {List.member mine(pos:Case2) MainState.mines} then
-								% Mine at position, trigger it
-								{HandleMineExplosion ID MainState CurrentState}
-								MineExploded = 1
-							end
-						end
-					[] 3 then % left
-						Case1 = pt(MainState.currentPos.x MainState.currentPos.y - 1) % one case left
-						if {List.member Case1 MainState.playersPos} then
-							% Player at position
-							TouchedPlayer = {List.subtract MainState.playersPos Case1}
-							{System.show TouchedPlayer}
-							MineExploded = 0
-						elseif {List.member mine(pos:Case1) MainState.mines} then
-							% Mine at position, trigger it
-							{HandleMineExplosion ID MainState CurrentState}
-							MineExploded = 1
-						else
-							Case2 = pt(MainState.currentPos.x - 2 MainState.currentPos.y) % two cases left
-							if {List.member Case2 MainState.playersPos} then
-								% Player at position
-								TouchedPlayer = {List.subtract MainState.playersPos Case2}
-								{System.show TouchedPlayer}
-								MineExploded = 0
-							elseif {List.member mine(pos:Case2) MainState.mines} then
-								% Mine at position, trigger it
-								{HandleMineExplosion ID MainState CurrentState}
-								MineExploded = 1
-							end
-						end
-					end
-					% Alert the other players
-					{SendToAllPlayers sayShoot(ID MainState.currentPos) PlayersPorts}
+			if (State.gunReloads >= Input.gunCharge) andthen (Position \= State.currentPos) then
+				% Alert the other players
+				{SendToAllPlayers sayShoot(ID Position) PlayersPorts}
 
-					% Save the new state
-					/*if MineExploded == 1 then %TODO
-						NewState = state(
-							mines: CurrentState.mines % Save new mines
-							flags: MainState.flags 
-							currentPos: MainState.currentPos
-							hp: MainState.hp 
-							map: MainState.map
-							playersPos: MainState.playersPos
-							mineReloads: MainState.mineReloads
-							gunReloads: MainState.gunReloads - Input.gunCharge
-							orientation: MainState.orientation
-						)
-					else
-						NewState = state(
-							mines: MainState.mines
-							flags: MainState.flags 
-							currentPos: MainState.currentPos
-							hp: MainState.hp 
-							map: MainState.map
-							playersPos: MainState.playersPos
-							mineReloads: MainState.mineReloads
-							gunReloads: MainState.gunReloads - Input.gunCharge
-							orientation: MainState.orientation
-						)
-					end*/
-					NewState = state(
-						mines: MainState.mines
-						flags: MainState.flags 
-						currentPos: MainState.currentPos
-						hp: MainState.hp 
-						map: MainState.map
-						playersPos: MainState.playersPos
-						mineReloads: MainState.mineReloads
-						gunReloads: MainState.gunReloads - Input.gunCharge
-						orientation: MainState.orientation
-					)
+				% Check if the bullet hits something (player, mine, or nothing)
+				if {List.member Position State.playersPos} then
+					% Player at Position
+					{HandleBulletCollision ID State Position}
+					NewState = State
+				elseif {List.member mine(pos:Position) State.mines} then
+					% Mine at Position, trigger it
+					{HandleMineExplosion ID State NewState}
+				else
+					% Nothing at Position
+					NewState = State
 				end
 			else
-				NewState = MainState
+				NewState = State
 			end
-		[] mine then
+		[] mine(pos:Position) then
 			% Place mine
-			if MainState.mineReloads >= Input.mineCharge then
-				local
-					Mine = mine(pos: MainState.currentPos)
-				in
-					% Alert the other players
-					{SendToAllPlayers sayMinePlaced(ID Mine) PlayersPorts}
+			if (State.mineReloads >= Input.mineCharge) andthen (Position == State.currentPos) then
+				% Alert the other players
+				{SendToAllPlayers sayMinePlaced(ID mine(pos: Position)) PlayersPorts}
 
-					% Place mine
-					{Send WindowPort putMine(Mine)}
+				% Place mine
+				{Send WindowPort putMine(mine(pos: Position))}
 
-					% Save the new state
-					NewState = state(
-						mines: {List.append MainState.mines [Mine]}
-						flags: MainState.flags 
-						currentPos: MainState.currentPos
-						hp: MainState.hp 
-						map: MainState.map
-						playersPos: MainState.playersPos
-						mineReloads: MainState.mineReloads - Input.mineCharge
-						gunReloads: MainState.gunReloads
-						orientation: MainState.orientation
-						)
-				end
+				% Save the new state
+				NewState = state(
+					mines: State.mines|mine(pos: Position)|nil
+					flags: State.flags 
+					currentPos: State.currentPos
+					hp: State.hp 
+					map: State.map
+					playersPos: State.playersPos
+					mineReloads: State.mineReloads - Input.mineCharge
+					gunReloads: State.gunReloads
+					orientation: State.orientation
+					)
 			else
-				NewState = MainState
+				NewState = State
 			end
+		else NewState = State
 		end
 	end
 
-	proc {HandleBulletCollision ID State}
-		% Player State
-		{SendToAllPlayers sayDamageTaken(ID 1 State.hp-1) PlayersPorts}
+	proc {HandleBulletCollision ID State Position}
+		local SoldierID in
+			% Retrieve the ID of the player touched by the bullet
+			{Send WindowPort retrieveSoldier(Position SoldierID)}µ
 
-		% GUI Update
-		{Send WindowPort lifeUpdate(ID State.hp-1)}
+			% Player State
+			{SendToAllPlayers sayDamageTaken(SoldierID 1 State.hp-1) PlayersPorts}
+
+			% GUI Update
+			{Send WindowPort lifeUpdate(SoldierID State.hp-1)}
+		end
 	end
 
 	SimulatedThinking = proc{$} {Delay ({OS.rand} mod (Input.thinkMax - Input.thinkMin) + Input.thinkMin)} end
@@ -449,15 +324,21 @@ in
 				if State.hp > 0 then
 					% ask the player what weapon it wants to charge
 					local NewId Kind in
-						{Send Port chargeItem(NewId Kind)} % Ask which weapon to charge
-						{ChargeWeapon ID MineState ChargeState Kind}
+						{Send Port chargeItem(NewId Kind)} % Ask which weapon to chargeµ
+						{ChargeWeapon ID MineState ChargeState Kind} % Charge the corresponding weapon
+						if (State.gunReloads >= Input.gunCharge) then
+							{Send Port sayCharge(NewId mine)} % Inform that gun is charged
+						end
+						if (State.mineReloads >= Input.mineCharge) then
+							{Send Port sayCharge(NewId gun)} % Inform that mine is charged
+						end
 						%NewState = ChargeState
 					end
 
 					% ask the player what weapon it wants to use (if possible)
 					local NewId Kind in
-						{Send Port fireItem(NewId Kind)} % Ask which weapon to fire
-						{FireWeapon ID ChargeState FireState Kind}
+						{Send Port fireItem(NewId Kind)} % Ask which weapon to fireµ
+						{FireWeapon ID ChargeState FireState Kind} % Fire the corresponding weapon
 						NewState = FireState
 					end
 
@@ -498,10 +379,7 @@ in
 			thread
 				% Orientation : 0 = up, 1 = right, 2 = down, 3 = left (changes with every movement)
 			 	{Main Port ID state(
-
 					mines: [mine(pos: pt(x:4 y:3)) mine(pos: pt(x:4 y:2)) mine(pos: pt(x:4 y:1))]
-
-
 					flags: Input.flags 
 					currentPos: Position 
 					hp: Input.startHealth 

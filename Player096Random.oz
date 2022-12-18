@@ -99,7 +99,7 @@ in
 
 	fun {InitPosition State ?ID ?Position}
 		% Sets the player spawn position
-		{System.show initPosition}
+		%{System.show initPosition}
 		ID = State.id
 		Position = State.startPosition
 		State
@@ -150,7 +150,7 @@ in
 
 	fun {Respawn State}
 		% The player can respawn and keep playing
-		{System.show respawn}
+		%{System.show respawn}
 		state(
 			id:State.id
 			position: State.position
@@ -183,42 +183,100 @@ in
 		% Allow the player to choose a weapon to charge
 		ID = State.id
 		Random = {RandomInRange 0 1}
+		NewState
 	in
 		case Random
-			of 0 then Kind = gun
-			else Kind = mine
+			of 0 then
+				Kind = gun
+				NewState = state(
+					id: State.id
+					position: State.position
+					map: State.map
+					hp: State.hp
+					flag: State.flag
+					mineReloads: State.mineReloads
+					gunReloads: State.gunReloads + 1
+					startPosition: State.startPosition
+				)
+			else
+				Kind = mine
+				NewState = state(
+					id:State.id
+					position: State.position
+					map: State.map
+					hp: Input.startHealth
+					flag: State.flag
+					mineReloads: State.mineReloads + 1
+					gunReloads: State.gunReloads
+					startPosition: State.startPosition
+				)
 		end
-		State
+		{System.show chargeItem(mineReloads:NewState.mineReloads gunReloads:NewState.gunReloads charged:Kind)}
+		NewState
 	end
 
 	fun {SayCharge State ID Kind}
 		% Inform that weapon Kind is charged
-		{System.show sayCharge}
+		{System.show sayCharge(State.id Kind)}
 		State
 	end
 
 	fun {FireItem State ?ID ?Kind}
 		% Allow the player to choose a weapon to fire
-		% Fire randowmlu, does not check for charges
+		% Fire randowmly, does not check for charges
 		ID = State.id
-		Random = {RandomInRange 0 1}
+		NewState
+		RandomChoice = {RandomInRange 0 1}
+		RandomXOrY = {RandomInRange 0 1}
+		RandomX = {RandomInRange ~2 2}
+		RandomY = {RandomInRange ~2 2}
 	in
-		case Random
-			of 0 then Kind = gun
-			else Kind = mine
+		if (RandomChoice == 0) andthen (State.gunReloads >= Input.gunCharge) then % Shoot gun
+			{System.show shootGun}
+			case RandomXOrY
+			of 0 then 	Kind = gun(pos: pt(x:State.position.x+RandomX y:State.position.y)) % X
+			else 		Kind = gun(pos: pt(x:State.position.x y:State.position.y+RandomY)) % Y
+			end
+			NewState = state(
+				id:State.id
+				position: State.position
+				map: State.map
+				hp: Input.startHealth
+				flag: State.flag
+				mineReloads: State.mineReloads
+				gunReloads: State.gunReloads - Input.gunCharge
+				startPosition: State.startPosition
+			)
+		elseif (RandomChoice == 1) andthen (State.mineReloads >= Input.mineCharge) then % Place mine
+			{System.show placeMine}
+			Kind = mine(pos: State.position) % Place mine
+			NewState = state(
+				id:State.id
+				position: State.position
+				map: State.map
+				hp: Input.startHealth
+				flag: State.flag
+				mineReloads: State.mineReloads - Input.mineCharge
+				gunReloads: State.gunReloads
+				startPosition: State.startPosition
+			)
+		else
+			{System.show doNothing}
+			Kind = null
+			NewState = State
 		end
-		State
+		NewState
 	end
 
 	fun {SayMinePlaced State ID Mine}
 		% A mine as been placed by player ID
-		{System.show sayMinePlaced}
+		%{System.show sayMinePlaced}
 		State
 	end
 
 	fun {SayShoot State ID Position}
 		% Inform that a gun has been fired toward Position by player ID
-		{System.show sayShoot}
+		%{System.show sayShoot}
 		State
 	end
 
@@ -230,7 +288,7 @@ in
 	fun {SayDamageTaken State ID Damage LifeLeft}
 		% Inform that player ID has taken damage and as LifeLeft hp
 		if ID == State.id then
-			{System.show damageTaken}
+			%{System.show damageTaken}
 			state(
 				id: State.id
 				position: State.position
@@ -252,7 +310,7 @@ in
 		Flag = State.flag
 		Random = {RandomInRange 0 1}
 	in
-		{System.show takeFlag}
+		%{System.show takeFlag}
 		if Random == 1 then
 			% take the flag
 			state(
@@ -276,7 +334,7 @@ in
 		Flag = State.flag
 		Random = {RandomInRange 0 1}
 	in
-		{System.show dropFlag}
+		%{System.show dropFlag}
 		if Random == 1 then
 			% drop the flag
 			state(
@@ -296,13 +354,13 @@ in
 
 	fun {SayFlagTaken State ID Flag}
 		% The player ID has picked up the flag
-		{System.show sayFlagTaken}
+		%{System.show sayFlagTaken}
 		State
 	end
 
 	fun {SayFlagDropped State ID Flag}
 		% The player ID has dropped the flag
-		{System.show sayFlagDropped}
+		%{System.show sayFlagDropped}
 		State
 	end
 end
