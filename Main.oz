@@ -126,7 +126,7 @@ in
 			NewState = state(
 				mines: MainState.mines
 				flags: MainState.flags
-				flag: null
+				flag: MainState.flag
 				currentPos: pt(x:NewPosX y:NewPosY)
 				hp: MainState.hp
 				map: MainState.map
@@ -148,7 +148,7 @@ in
 		NewState = state(
 			mines: {List.subtract State.mines mine(pos: State.currentPos)}
 			flags: State.flags
-			flag: null
+			flag: State.flag
 			currentPos: State.currentPos
 			hp: State.hp - 2
 			map: State.map
@@ -174,7 +174,7 @@ in
 			NewState = state(
 				mines: State.mines 
 				flags: State.flags
-				flag: null
+				flag: State.flag
 				currentPos: State.currentPos
 				hp: State.hp 
 				map: State.map
@@ -187,7 +187,7 @@ in
 			NewState = state(
 				mines: State.mines 
 				flags: State.flags
-				flag: null
+				flag: State.flag
 				currentPos: State.currentPos
 				hp: State.hp 
 				map: State.map
@@ -237,7 +237,7 @@ in
 				NewState = state(
 					mines: State.mines|mine(pos: Position)|nil
 					flags: State.flags
-					flag: null
+					flag: State.flag
 					currentPos: State.currentPos
 					hp: State.hp 
 					map: State.map
@@ -364,7 +364,7 @@ in
 			NewState = state(
 				mines: State.mines 
 				flags: State.flags 
-				flag: null
+				flag: State.flag
 				currentPos: State.currentPos
 				hp: Input.startHealth
 				map: State.map
@@ -425,7 +425,6 @@ in
 						% Player is on enemy flag
 						% Ask if take flag
 						{Send Port takeFlag(NewID Flag)}
-						{System.show NewID Flag}
 						{GrabFlag ID FireState Flag GrabState}
 					else
 						GrabState = FireState
@@ -433,10 +432,15 @@ in
 				end
 
 				% Ask the player if he wants to drop the flag (if possible)
-				local NewID in
+				local NewID Flag in
 					if (GrabState.flag \= null) then
-						{Send Port dropFlag(NewID GrabState.flag)}
-						{DropFlag ID GrabState GrabState.flag DropState}
+						{Send Port dropFlag(NewID Flag)}
+						case Flag
+						of flag(color:Color pos:_) then
+							{DropFlag ID GrabState Flag DropState}
+						else
+							DropState = GrabState
+						end
 					else
 						DropState = GrabState
 					end
