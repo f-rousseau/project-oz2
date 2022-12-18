@@ -9,8 +9,6 @@ define
 	% Vars
 	MapWidth = {List.length Input.map}
     MapHeight = {List.length Input.map.1}
-	PlayersPosition
-	FoodPosition
 
 	% Functions
 	StartPlayer
@@ -38,6 +36,7 @@ define
 	SayShoot
 	TakeFlag
 	DropFlag
+	UpdatePlayerPosition
 
 	% Helper functions
 	RandomInRange = fun {$ Min Max} Min+({OS.rand}mod(Max-Min+1)) end
@@ -50,16 +49,20 @@ in
 		thread
 			{TreatStream
 			 	Stream
-				 state(
+				state(
 					id: id(name:random color:Color id:ID)
-					position: {List.nth Input.spawnPoints ID}
+					position: {List.nth Input.spawnPoints ID} % Current position
 					map: Input.map
-					hp: Input.startHealth
-					flag: null
-					mineReloads: 0
-					gunReloads: 0
+					hp: Input.startHealth % Current health
+					flag: null % Current possessed flag
+					mineReloads: 0 % Current mine charges
+					gunReloads: 0 % Current gun charges
 					startPosition: {List.nth Input.spawnPoints ID}
 					% TODO You can add more elements if you need it
+					flagsPos: Input.flags % Store flag positions
+					minePos: nil % Store mine positions
+					playerPos: nil % Store players positions
+					foodPos: nil % Store food positions
 				)
 			}
 		end
@@ -99,7 +102,7 @@ in
 
 	fun {InitPosition State ?ID ?Position}
 		% Sets the player spawn position
-		%{System.show initPosition}
+		{System.show initPosition}
 		ID = State.id
 		Position = State.startPosition
 		State
@@ -130,7 +133,26 @@ in
 		State
 	end
 
+	fun {UpdatePlayerPosition PlayersPos WantedID Position ?Changed}
+		case PlayersPos
+		of nil then
+			if Changed == false then
+				player(id:WantedID pos:Position)|nil
+			else
+				nil
+			end
+		[] player(id:ID pos:_)|T then
+			if (ID == WantedID) then
+				player(id:WantedID pos:Position)|{UpdatePlayerPosition T WantedID Position true}
+			else
+				PlayersPos.1|{UpdatePlayerPosition T WantedID Position false}
+			end
+		end
+	end
+
 	fun {SayMoved State ID Position}
+		NewPlayerPos = {UpdatePlayerPosition State.playerPos ID Position false}
+	in
 		% Inform the new position of player ID
 		if ID == State.id then
 			state(
@@ -142,15 +164,30 @@ in
 				mineReloads: State.mineReloads
 				gunReloads: State.gunReloads
 				startPosition: State.startPosition
+				flagsPos: State.flagsPos
+				minePos: State.minePos
+				playerPos: NewPlayerPos
 			)
 		else
-			State
+			state(
+				id:State.id
+				position: State.position
+				map: State.map
+				hp: State.hp
+				flag: State.flag
+				mineReloads: State.mineReloads
+				gunReloads: State.gunReloads
+				startPosition: State.startPosition
+				flagsPos: State.flagsPos
+				minePos: State.minePos
+				playerPos: NewPlayerPos
+			)
 		end
 	end
 
 	fun {Respawn State}
 		% The player can respawn and keep playing
-		%{System.show respawn}
+		{System.show respawn}
 		state(
 			id:State.id
 			position: State.position
@@ -160,6 +197,9 @@ in
 			mineReloads: State.mineReloads
 			gunReloads: State.gunReloads
 			startPosition: State.startPosition
+			flagsPos: State.flagsPos
+			minePos: State.minePos
+			playerPos: State.playerPos
 		)
 	end
 
@@ -170,7 +210,7 @@ in
 
 	fun {SayFoodAppeared State Food}
 		% Food appeared somewhere
-		FoodPosition = Food.pos
+		%FoodPosition = Food.pos
 		State
 	end
 
@@ -197,6 +237,9 @@ in
 					mineReloads: State.mineReloads
 					gunReloads: State.gunReloads + 1
 					startPosition: State.startPosition
+					flagsPos: State.flagsPos
+					minePos: State.minePos
+					playerPos: State.playerPos
 				)
 			else
 				Kind = mine
@@ -209,6 +252,9 @@ in
 					mineReloads: State.mineReloads + 1
 					gunReloads: State.gunReloads
 					startPosition: State.startPosition
+					flagsPos: State.flagsPos
+					minePos: State.minePos
+					playerPos: State.playerPos
 				)
 		end
 		{System.show chargeItem(mineReloads:NewState.mineReloads gunReloads:NewState.gunReloads charged:Kind)}
@@ -246,6 +292,9 @@ in
 				mineReloads: State.mineReloads
 				gunReloads: State.gunReloads - Input.gunCharge
 				startPosition: State.startPosition
+				flagsPos: State.flagsPos
+				minePos: State.minePos
+				playerPos: State.playerPos
 			)
 		elseif (RandomChoice == 1) andthen (State.mineReloads >= Input.mineCharge) then % Place mine
 			{System.show placeMine}
@@ -259,6 +308,9 @@ in
 				mineReloads: State.mineReloads - Input.mineCharge
 				gunReloads: State.gunReloads
 				startPosition: State.startPosition
+				flagsPos: State.flagsPos
+				minePos: State.minePos
+				playerPos: State.playerPos
 			)
 		else
 			{System.show doNothing}
@@ -270,25 +322,26 @@ in
 
 	fun {SayMinePlaced State ID Mine}
 		% A mine as been placed by player ID
-		%{System.show sayMinePlaced}
+		{System.show sayMinePlaced(Mine)}
 		State
 	end
 
 	fun {SayShoot State ID Position}
 		% Inform that a gun has been fired toward Position by player ID
-		%{System.show sayShoot}
+		{System.show sayShoot(Position)}
 		State
 	end
 
 	fun {SayDeath State ID}
 		% Inform that player ID is dead
+		{System.show sayDeath(ID)}
 		State
 	end
 
 	fun {SayDamageTaken State ID Damage LifeLeft}
 		% Inform that player ID has taken damage and as LifeLeft hp
+		{System.show damageTaken(ID damage:Damage lifeLeft:LifeLeft)}
 		if ID == State.id then
-			%{System.show damageTaken}
 			state(
 				id: State.id
 				position: State.position
@@ -298,6 +351,9 @@ in
 				mineReloads: State.mineReloads
 				gunReloads: State.gunReloads
 				startPosition: {List.nth Input.spawnPoints ID.id}
+				flagsPos: State.flagsPos
+				minePos: State.minePos
+				playerPos: State.playerPos
 			)
 		else
 			State
@@ -307,12 +363,12 @@ in
 	fun {TakeFlag State ?ID ?Flag}
 		% Decide if take flag
 		ID = State.id
-		Flag = State.flag
 		Random = {RandomInRange 0 1}
 	in
-		%{System.show takeFlag}
+		{System.show takeFlag(State)}
 		if Random == 1 then
 			% take the flag
+			Flag = true
 			state(
 				id: State.id
 				position: State.position
@@ -322,8 +378,12 @@ in
 				mineReloads: State.mineReloads
 				gunReloads: State.gunReloads
 				startPosition: State.startPosition
+				flagsPos: State.flagsPos
+				minePos: State.minePos
+				playerPos: State.playerPos
 			)
 		else
+			Flag = false
 			State
 		end
 	end
@@ -331,10 +391,9 @@ in
 	fun {DropFlag State ?ID ?Flag}
 		% Decide if drop flag
 		ID = State.id
-		Flag = State.flag
 		Random = {RandomInRange 0 1}
 	in
-		%{System.show dropFlag}
+		{System.show dropFlag}
 		if Random == 1 then
 			% drop the flag
 			state(
@@ -342,10 +401,13 @@ in
 				position: State.position
 				map: State.map
 				hp: State.hp
-				flag: Flag
+				flag: null
 				mineReloads: State.mineReloads
 				gunReloads: State.gunReloads
 				startPosition: State.startPosition
+				flagsPos: State.flagsPos
+				minePos: State.minePos
+				playerPos: State.playerPos
 			)
 		else
 			State
@@ -354,13 +416,13 @@ in
 
 	fun {SayFlagTaken State ID Flag}
 		% The player ID has picked up the flag
-		%{System.show sayFlagTaken}
+		{System.show sayFlagTaken(ID Flag)}
 		State
 	end
 
 	fun {SayFlagDropped State ID Flag}
 		% The player ID has dropped the flag
-		%{System.show sayFlagDropped}
+		{System.show sayFlagDropped(ID Flag)}
 		State
 	end
 end

@@ -13,6 +13,8 @@ define
 	Main
 	WindowPort
 	RespawnTime
+	FoodSpawnDelay
+	FoodTimer
 
 	CheckValidMove
 	MovePlayer
@@ -22,6 +24,12 @@ define
 	FireWeapon
 	PlaceMine
 	HandleBulletCollision
+	GrabFlag
+	DropFlag
+	CheckFoodSpawn
+
+	SpawnFood
+	RandomInRange = fun {$ Min Max} Min+({OS.rand}mod(Max-Min+1)) end
 
 	proc {DrawFlags Flags Port}
 		case Flags of nil then skip 
@@ -111,34 +119,22 @@ in
 	proc {MovePlayer ID Port MainState NewState NewPosX NewPosY}
 		% must update the 3 components : MainState, GUIState and PlayerState
 		% MainState
-		local NewPlayerPos OldPlayerPos Orientation in
+		local NewPlayerPos OldPlayerPos in
 			OldPlayerPos = {List.subtract MainState.playersPos MainState.currentPos}
 			NewPlayerPos = {List.append OldPlayerPos [pt(x:NewPosX y:NewPosY)]}
 
-			% 0 = up, 1 = right, 2 = down, 3 = left (changes with every movement)
-			if NewPosY - MainState.currentPos.y > 0 then
-				Orientation = 1 % player moved right
-			elseif NewPosY - MainState.currentPos.y < 0 then
-				Orientation = 3 % player moved left
-			elseif NewPosX - MainState.currentPos.x > 0 then
-				Orientation = 2 % player moved down
-			elseif NewPosX - MainState.currentPos.x < 0 then
-				Orientation = 0 % player moved up
-			else
-				Orientation = MainState.orientation % Did not move, orientation stays the same
-			end
-
 			NewState = state(
-				mines: MainState.mines 
-				flags: MainState.flags 
+				mines: MainState.mines
+				flags: MainState.flags
+				flag: null
 				currentPos: pt(x:NewPosX y:NewPosY)
-				hp: MainState.hp 
+				hp: MainState.hp
 				map: MainState.map
 				playersPos: NewPlayerPos
 				mineReloads: MainState.mineReloads
 				gunReloads: MainState.gunReloads
-				orientation: Orientation
-				)
+				food: MainState.food
+			)
 		end
 		% PlayerState
 		{SendToAllPlayers sayMoved(ID pt(x:NewPosX y:NewPosY)) PlayersPorts}
@@ -150,23 +146,26 @@ in
 		% must notify the 3 components : MainState, GUIState and PlayerState
 		% MainState
 		NewState = state(
-			mines: State.mines 
-			flags: State.flags 
+			mines: {List.subtract State.mines mine(pos: State.currentPos)}
+			flags: State.flags
+			flag: null
 			currentPos: State.currentPos
 			hp: State.hp - 2
 			map: State.map
 			playersPos: State.playersPos
 			mineReloads: State.mineReloads
 			gunReloads: State.gunReloads
-			orientation: State.orientation
-			)
+			food: State.food
+		)
 		% GUIState
-		{Send WindowPort removeMine(mine(pos: State.currentPos))}
+		{Send WindowPort removeMine(mine(pos: State.currentPos))} % remove mine
+		{Send WindowPort lifeUpdate(ID NewState.hp)} % Update hp
+		if (NewState.hp =< 0) then
+			{Send WindowPort removeSoldier(ID)} % Remove player if hp dropped to 0
+		end
 		% PlayerState
 		{SendToAllPlayers sayMineExplode(mine(pos: State.currentPos)) PlayersPorts}
 		{SendToAllPlayers sayDamageTaken(ID 2 State.hp-2) PlayersPorts}
-
-		{Send WindowPort lifeUpdate(ID State.hp-2)}
 	end
 
 	proc {ChargeWeapon ID State NewState Weapon}
@@ -174,27 +173,29 @@ in
 		of gun then
 			NewState = state(
 				mines: State.mines 
-				flags: State.flags 
+				flags: State.flags
+				flag: null
 				currentPos: State.currentPos
 				hp: State.hp 
 				map: State.map
 				playersPos: State.playersPos
 				mineReloads: State.mineReloads
 				gunReloads: State.gunReloads + 1
-				orientation: State.orientation
-				)
+				food: State.food
+			)
 		[] mine then
 			NewState = state(
 				mines: State.mines 
-				flags: State.flags 
+				flags: State.flags
+				flag: null
 				currentPos: State.currentPos
 				hp: State.hp 
 				map: State.map
 				playersPos: State.playersPos
 				mineReloads: State.mineReloads + 1
 				gunReloads: State.gunReloads
-				orientation: State.orientation
-				)
+				food: State.food
+			)
 		end
 	end
 
@@ -235,15 +236,16 @@ in
 				% Save the new state
 				NewState = state(
 					mines: State.mines|mine(pos: Position)|nil
-					flags: State.flags 
+					flags: State.flags
+					flag: null
 					currentPos: State.currentPos
 					hp: State.hp 
 					map: State.map
 					playersPos: State.playersPos
 					mineReloads: State.mineReloads - Input.mineCharge
 					gunReloads: State.gunReloads
-					orientation: State.orientation
-					)
+					food: State.food
+				)
 			else
 				NewState = State
 			end
@@ -252,112 +254,215 @@ in
 	end
 
 	proc {HandleBulletCollision ID State Position}
-		local SoldierID in
-			% Retrieve the ID of the player touched by the bullet
-			{Send WindowPort retrieveSoldier(Position SoldierID)}µ
+		SoldierID
+	in
+		% Retrieve the ID of the player touched by the bullet
+		{Send WindowPort retrieveSoldier(Position SoldierID)}
 
-			% Player State
-			{SendToAllPlayers sayDamageTaken(SoldierID 1 State.hp-1) PlayersPorts}
+		% Player State
+		{SendToAllPlayers sayDamageTaken(SoldierID 1 State.hp-1) PlayersPorts}
 
-			% GUI Update
-			{Send WindowPort lifeUpdate(SoldierID State.hp-1)}
+		% GUI Update
+		{Send WindowPort lifeUpdate(SoldierID State.hp-1)}
+	end
+
+	proc {GrabFlag ID State Flag NewState}
+		% Player ID grabs the Flag then alert every player
+		Flags
+	in
+		% MainState
+		{List.subtract State.flags Flag Flags}
+		NewState = state(
+			mines: State.mines
+			flags: Flags
+			flag: Flag
+			currentPos: State.currentPos
+			hp: State.hp
+			map: State.map
+			playersPos: State.playersPos
+			mineReloads: State.mineReloads
+			gunReloads: State.gunReloads
+			food: State.food
+		)
+
+		% Players State
+		{SendToAllPlayers sayFlagTaken(ID Flag) PlayersPorts}
+
+		% GUI State
+		{Send WindowPort removeFlag(Flag)}
+	end
+
+	proc {DropFlag ID State Flag NewState}
+		% Player ID drops the Flag then alert every player
+		% MainState
+		NewState = state(
+			mines: State.mines
+			flags: State.flags|Flag|nil
+			flag: null
+			currentPos: State.currentPos
+			hp: State.hp
+			map: State.map
+			playersPos: State.playersPos
+			mineReloads: State.mineReloads
+			gunReloads: State.gunReloads
+			food: State.food
+		)
+
+		% Players State
+		{SendToAllPlayers sayFlagTaken(ID Flag) PlayersPorts}
+
+		% GUI State
+		{Send WindowPort removeFlag(Flag)}
+	end
+
+	proc {SpawnFood FoodList NewFoodList}
+		X = {RandomInRange 1 Input.nRow}
+		Y = {RandomInRange 1 Input.nColumn}
+	in
+		if ({List.nth {List.nth Input.map X} Y} == 0) then % Nothing on this spot
+			% Spawn food
+			NewFoodList = FoodList|food(pos:pt(x:X y:Y))|nil
+		else
+			% Invalid spot, retry
+			{SpawnFood FoodList NewFoodList}
 		end
 	end
 
 	SimulatedThinking = proc{$} {Delay ({OS.rand} mod (Input.thinkMax - Input.thinkMin) + Input.thinkMin)} end
 	RespawnTime = proc{$} {Delay Input.respawnDelay} end
+	FoodSpawnDelay = ({OS.rand} mod (Input.foodDelayMax - Input.foodDelayMin) + Input.foodDelayMin)
+	FoodTimer = {New Time.repeat setRepAll(delay: FoodSpawnDelay)}
 
 	proc {Main Port ID State}
-		local
-			NewState
-			MovedState
-			MineState
-			ChargeState
-			FireState
-			MineState
-		in
-			{System.show startOfLoop(ID)}
+		NewState	% Final state
+		MovedState	% State once player moved
+		MineState	% State once player stapped on a mine
+		ChargeState	% State once player charged a weapon
+		FireState	% State once player fired a weapon
+		GrabState	% State once player grabbed the flag
+		DropState	% State once player dropped the flag
+		FoodState	% State once food spawned
+		ColorList = {List.take Input.colors 2} % Colors of the teams (works only if two teams, with colors stored as [a b a b ...])
+		FoodList = State.food % Food List
+		NewFoodList
+	in
+		{System.show startOfLoop(ID)}
 
-			if State.hp =< 0 then
-				% Player is dead, wait for respawn and skip the rest of the turn
-				% GUI State
-				{Send WindowPort removeSoldier(ID)}
-				% PlayerState
-				{SendToAllPlayers sayDeath(ID) PlayersPorts}
-				{RespawnTime}
-				% GUI State
-				{Send WindowPort initSoldier(ID State.currentPos)}
-				{Send WindowPort lifeUpdate(ID Input.startHealth)}
-				% Respawn
-				{Send Port respawn()}
-				% Main State
-				NewState = state(
-					mines: State.mines 
-					flags: State.flags 
-					currentPos: State.currentPos
-					hp: Input.startHealth
-					map: State.map
-					playersPos: State.playersPos
-					mineReloads: State.mineReloads
-					gunReloads: State.gunReloads
-					orientation: State.orientation
-					)
-			else
-				% ask where the player wants to move and move it if possible
-				local NewID AskPos R in
-					{Send Port move(NewID AskPos)}
-					if {CheckValidMove ID State.currentPos AskPos.x AskPos.y State.map State.playersPos} then
-						{MovePlayer ID Port State MovedState AskPos.x AskPos.y}
-					else
-						MovedState = State
-					end
-				end
-
-				% check if player moved on a mine
-				if {List.member mine(pos:MovedState.currentPos) State.mines} then
-					{HandleMineExplosion ID MovedState MineState}
-					% Handle NewState conflicts
+		if State.hp =< 0 then
+			% Player is dead, wait for respawn and skip the rest of the turn
+			% GUI State
+			{Send WindowPort removeSoldier(ID)}
+			% PlayerState
+			{SendToAllPlayers sayDeath(ID) PlayersPorts}
+			{RespawnTime}
+			% GUI State
+			{Send WindowPort initSoldier(ID State.currentPos)}
+			{Send WindowPort lifeUpdate(ID Input.startHealth)}
+			% Respawn
+			{Send Port respawn()}
+			% Main State
+			NewState = state(
+				mines: State.mines 
+				flags: State.flags 
+				flag: null
+				currentPos: State.currentPos
+				hp: Input.startHealth
+				map: State.map
+				playersPos: State.playersPos
+				mineReloads: State.mineReloads
+				gunReloads: State.gunReloads
+				food: State.food
+			)
+		else
+			% ask where the player wants to move and move it if possible
+			local NewID AskPos R in
+				{Send Port move(NewID AskPos)}
+				if {CheckValidMove ID State.currentPos AskPos.x AskPos.y State.map State.playersPos} then
+					{MovePlayer ID Port State MovedState AskPos.x AskPos.y}
 				else
-					MineState = MovedState
-				end
-
-				if State.hp > 0 then
-					% ask the player what weapon it wants to charge
-					local NewId Kind in
-						{Send Port chargeItem(NewId Kind)} % Ask which weapon to chargeµ
-						{ChargeWeapon ID MineState ChargeState Kind} % Charge the corresponding weapon
-						if (State.gunReloads >= Input.gunCharge) then
-							{Send Port sayCharge(NewId mine)} % Inform that gun is charged
-						end
-						if (State.mineReloads >= Input.mineCharge) then
-							{Send Port sayCharge(NewId gun)} % Inform that mine is charged
-						end
-						%NewState = ChargeState
-					end
-
-					% ask the player what weapon it wants to use (if possible)
-					local NewId Kind in
-						{Send Port fireItem(NewId Kind)} % Ask which weapon to fireµ
-						{FireWeapon ID ChargeState FireState Kind} % Fire the corresponding weapon
-						NewState = FireState
-					end
-
-					% ask the player if he wants to grab the flag (if possible)
-
-					% ask the player if he wants to drop the flag (if possible)
-
-				%else
-					% if player died, notify everyone and drop flag
+					MovedState = State
 				end
 			end
 
-			% spawn food if possible
+			% check if player moved on a mine
+			if {List.member mine(pos:MovedState.currentPos) State.mines} then
+				{HandleMineExplosion ID MovedState MineState}
+				% Handle NewState conflicts
+			else
+				MineState = MovedState
+			end
 
-			{Delay 250}
-			%{SimulatedThinking}
-			{System.show endOfLoop(ID)}
-			{Main Port ID NewState}
+			if MineState.hp > 0 then
+				% Ask the player what weapon it wants to charge
+				local NewID Kind in
+					{Send Port chargeItem(NewID Kind)} % Ask which weapon to charge
+					{ChargeWeapon ID MineState ChargeState Kind} % Charge the corresponding weapon
+					if (State.gunReloads >= Input.gunCharge) then
+						{Send Port sayCharge(NewID mine)} % Inform that gun is charged
+					end
+					if (State.mineReloads >= Input.mineCharge) then
+						{Send Port sayCharge(NewID gun)} % Inform that mine is charged
+					end
+				end
+
+				% Ask the player what weapon it wants to use (if possible)
+				local NewID Kind in
+					{Send Port fireItem(NewID Kind)} % Ask which weapon to fire
+					{FireWeapon ID ChargeState FireState Kind} % Fire the corresponding weapon
+				end
+
+				% Ask the player if he wants to grab the flag (if possible)
+				local NewID Flag Color Flag Flags Test in
+					% Retrieve color of enemy team
+					if (ID.id == 1) then
+						Color = {List.nth ColorList ID.id + 1}
+					else
+						Color = {List.nth ColorList ID.id - 1}
+					end
+
+					Flag = flag(color:Color pos:FireState.currentPos)
+					if {List.member Flag FireState.flags} then
+						% Player is on enemy flag
+						% Ask if take flag
+						{Send Port takeFlag(NewID Flag)}
+						{System.show NewID Flag}
+						{GrabFlag ID FireState Flag GrabState}
+					else
+						GrabState = FireState
+					end
+				end
+
+				% Ask the player if he wants to drop the flag (if possible)
+				local NewID in
+					if (GrabState.flag \= null) then
+						{Send Port dropFlag(NewID GrabState.flag)}
+						{DropFlag ID GrabState GrabState.flag DropState}
+					else
+						DropState = GrabState
+					end
+				end
+			else
+				local NewID in
+					% if player died, notify everyone and drop flag
+					{SendToAllPlayers sayDeath(ID) PlayersPorts}
+					if (MineState.flag \= null) then
+						{Send Port dropFlag(NewID MineState.flag)}
+						{DropFlag ID MineState MineState.flag DropState}
+					end
+				end
+			end
 		end
+
+		% Check if food spawned
+		% Generate Food Creation
+		%{FoodTimer setRepAction({SpawnFood FoodList NewFoodList})}
+		%{FoodTimer go()} % starts the loop if it is not currently running
+
+		NewState = DropState
+		{Delay 250}
+		%{SimulatedThinking}
+		{System.show endOfLoop(ID)}
+		{Main Port ID NewState}
 	end
 
 	proc {InitThreadForAll Players}
@@ -377,18 +482,18 @@ in
 			{Send WindowPort initSoldier(ID Position)}
 			{Send WindowPort lifeUpdate(ID Input.startHealth)}
 			thread
-				% Orientation : 0 = up, 1 = right, 2 = down, 3 = left (changes with every movement)
 			 	{Main Port ID state(
 					mines: [mine(pos: pt(x:4 y:3)) mine(pos: pt(x:4 y:2)) mine(pos: pt(x:4 y:1))]
-					flags: Input.flags 
-					currentPos: Position 
-					hp: Input.startHealth 
+					flags: Input.flags
+					flag: null
+					currentPos: Position
+					hp: Input.startHealth
 					map: Input.map
 					playersPos: Input.spawnPoints
 					mineReloads: 0
 					gunReloads: 0
-					orientation: 0 
-					)}
+					food: nil
+				)}
 			end
 			{InitThreadForAll Next}
 		end
